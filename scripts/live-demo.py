@@ -53,7 +53,7 @@ def main(camera_id, filename, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set,
         t = time.time()
 
         if filename is not None or disable_vidgear:
-            ret, frame = video.read()
+            ret, frame = video.read()  # read(): Grabs, decodes and returns the next video frame.
             if not ret:
                 break
         else:
