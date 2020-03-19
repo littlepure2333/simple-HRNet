@@ -1,0 +1,23 @@
+{
+    "info":
+        {
+            "video_name": "skateboarding.mp4",
+            "resolution": [340, 256],
+            "num_frame": 300,
+            "num_keypoints": 17,
+            "keypoint_channels": ["x", "y", "score"],
+            "version": "1.0"
+        },
+    "annotations":
+        [
+            {
+                "frame_index": 0,
+                "person":[
+                    {"keypoint":[[x, y, score], [x, y, score], ...]},
+                    ...
+                ]
+            },
+            ...
+        ],
+    "category_id": 0
+}
