@@ -14,7 +14,7 @@ from misc.visualization import draw_points, draw_skeleton, draw_points_and_skele
 
 
 def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_resolution, 
-         yolo_model_def, yolo_weights_path, single_person, max_batch_size, device, same_frame, label):
+         yolo_model_def, yolo_weights_path, single_person, max_batch_size, device):
     """
     Extract keypoints from videos and save the results as json files. 
     The videos should be gathered in one folder named with category_id (e.g. 0).
@@ -25,8 +25,6 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
     # TODO multi GPU
     shortest = sys.maxsize
     longest = 0
-    label_dict = {}
-    label_dict_filled = {}
     if device is not None:
         device = torch.device(device)
     else:
@@ -46,6 +44,7 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
     print("> total {} videos in {}".format(len(videos_name), videos_path))
 
     # load model
+    print("> loading model")
     model = SimpleHRNet(
         hrnet_c,
         hrnet_j,
@@ -60,6 +59,7 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
 
     # read videos
     for i, video_name in enumerate(videos_name):
+        start = time.time()
         # read video
         filename = os.path.join(videos_path,video_name)
         video = cv2.VideoCapture(filename)
@@ -69,7 +69,7 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
         # read frames
         frames = []
         while True:
-            t = time.time()
+            
 
             ret, frame = video.read()  # read(): Grabs, decodes and returns the next video frame.
             if not ret:
@@ -84,10 +84,10 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
                 longest = T
             if T < shortest:
                 shortest = T
-            print("  pose estimating total {} frames".format(T))
+            print("   pose estimating total {} frames".format(T))
             frames = np.array(frames)
             # frames: a stack of n images with shape=(n, height, width, BGR color channel)
-            # points: list of n np.ndarrays with shape=(# of people, # of joints (nof_joints), 3);  dtype=(np.float32).
+            # points: list of n np.ndarrays with shape=(# of people, # of joints (nof_joints), 3);  dtype=(np.int32).
             points = model.predict(frames)
             max_M = 0
             for i in range(len(points)):
@@ -96,7 +96,7 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
 
             # save a preview picture in the middle frame of the video
             middle = int(len(frames)/2)
-            print("  saving a preview picture in the middel frame: {}".format(middle))
+            print("   saving a preview picture in the middel frame: {}".format(middle))
             preview_frame = frames[middle]
             preview_point = points[middle]
             for i, pt in enumerate(preview_point):
@@ -108,43 +108,52 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
         
             # encapsulate annotations
             annotations = []
-            T, M, V, C = points.shape # points: [T, M, V, C]
+            # points_np = np.array(points)
+            # for i in range(len(points)):
+            #     print("{}  ".format(i) + str(points[i].shape))
+            # print(points_np.shape)
+            T = len(points) # points: [T, M, V, C]
+            M_max = V = C = 0
             for t in range(T):
                 frame = {"frame_index": t}
                 person = []
+                M, V, C = points[t].shape
+                if M > M_max: M_max = M 
                 for m in range(M):
                     skeleton = []
                     for v in range(V):
-                        skeleton.append((points[t,m,v,0], points[t,m,v,1], points[t,m,v,2]))
+                        skeleton.append((int(points[t][m,v,0] + 0.5), # 四舍五入
+                                         int(points[t][m,v,1] + 0.5), 
+                                         int(points[t][m,v,2] + 0.5)))
                     keypoint = {"keypoint": skeleton}
                     person.append(keypoint)
                 frame["person"] = person
                 annotations.append(frame)
 
             # encapsulate info
-            width = video.get(3)
-            height= video.get(4)
+            width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height= int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             info = {
                 "video_name": video_name,
                 "resolution": (width, height),
                 "num_frame": T,
-                "num_person": M,
+                "num_person": M_max,
                 "num_keypoints": V,
                 "keypoint_channels": ("x", "y", "score"),
                 "version": 1.0
             }
-            print("  " + info)
+            print("   info: " + str(info))
 
             # encapsulate category_id
-            folder_name = videos_path.split("/")[-1]
+            folder_name = videos_path.split("/")[-2]
             category_id = folder_name
             print("   category_id: {}".format(category_id))
 
             # encapsulate all
             data_dict = {
                 "info": info,
-                "annotations": annotations,
-                "category_id": category_id
+                "category_id": category_id,
+                "annotations": annotations
             }
 
             # save json
@@ -152,8 +161,8 @@ def main(videos_path, hrnet_c, hrnet_j, hrnet_weights, hrnet_joints_set, image_r
             json_path = os.path.join(videos_path, '{}.json'.format(video_name.split('.')[0]))
             with open(json_path,'w')as f:
                 f.write(data_json)
-            print("  data json has been saved in {}".format(videos_path))
-        print("  total time: {}".format(time.time() - t))
+            print("   data json has been saved in {}".format(videos_path))
+        print("   total time: {}".format(time.time() - start))
     
     print("the longest frames in these videos is {}".format(longest))
     print("the shortest frames in these videos is {}".format(shortest))
